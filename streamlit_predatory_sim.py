@@ -1,5 +1,5 @@
 """
-Streamlit app: Illiquid Option / Algo Simulation (Plotly Version)
+Streamlit app: Illiquid Option / Algo Simulation (Auto-run + Timer)
 Run with:
     pip install streamlit pandas plotly
     streamlit run streamlit_predatory_sim.py
@@ -9,6 +9,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from io import StringIO
+import time
 
 st.set_page_config(page_title="Illiquid Option + Algo Simulation", layout="wide")
 
@@ -37,11 +38,13 @@ algo_aggression = st.sidebar.slider("Algo buy aggressiveness (0=gentle, 1=aggres
 algo_trade_size = st.sidebar.number_input("Algo trade size (units per action)", value=1.0, step=1.0)
 human_max_units = st.sidebar.number_input("Human max units to buy", value=3.0, step=1.0)
 
-run_button = st.sidebar.button("Run simulation")
+# Placeholder for live table and graph
+table_placeholder = st.empty()
+graph_placeholder = st.empty()
 
 
-def run_simulation(initial_bid, initial_ask, fair_price, threshold_pct, human_buy_intent,
-                   max_steps, algo_aggression, algo_trade_size, human_max_units):
+def run_simulation_live(initial_bid, initial_ask, fair_price, threshold_pct, human_buy_intent,
+                        max_steps, algo_aggression, algo_trade_size, human_max_units, delay=0.2):
 
     events = []
     bid = float(initial_bid)
@@ -59,6 +62,20 @@ def run_simulation(initial_bid, initial_ask, fair_price, threshold_pct, human_bu
             "ask": round(ask, 2),
             "note": note,
         })
+        df = pd.DataFrame(events)
+        table_placeholder.dataframe(df)
+        df_plot = df.copy()
+        df_plot["price_filled"] = df_plot["price"].fillna(method='ffill')
+        fig = px.line(df_plot, x="step", y="price_filled", title="Simulated Trade Prices Over Time")
+        fig.update_layout(
+            yaxis_title="Price",
+            xaxis_title="Step",
+            legend_title="Legend",
+        )
+        fig.add_hline(y=fair_price, line_dash="dash", line_color="green", annotation_text="Fair price")
+        fig.add_hline(y=fair_price * (1 + threshold_pct), line_dash="dot", line_color="red", annotation_text="Threshold")
+        graph_placeholder.plotly_chart(fig, use_container_width=True)
+        time.sleep(delay)
 
     record(0, "market", "initial_quotes", None, bid, ask, "illiquid wide spread")
     record(1, "human", "place_buy_intent", human_buy_intent, bid, ask, "human willing to buy")
@@ -118,33 +135,14 @@ def run_simulation(initial_bid, initial_ask, fair_price, threshold_pct, human_bu
     return pd.DataFrame(events)
 
 
-if run_button:
-    df = run_simulation(initial_bid, initial_ask, fair_price, threshold_pct,
-                        human_buy_intent, max_steps, algo_aggression, algo_trade_size, human_max_units)
+# Run the simulation automatically on page load
+df = run_simulation_live(initial_bid, initial_ask, fair_price, threshold_pct,
+                         human_buy_intent, max_steps, algo_aggression, algo_trade_size, human_max_units)
 
-    st.subheader("Simulation timeline")
-    st.dataframe(df)
-
-    # Always show a graph, even if some prices are missing
-    df_plot = df.copy()
-    df_plot["price_filled"] = df_plot["price"].fillna(method='ffill')
-    fig = px.line(df_plot, x="step", y="price_filled", title="Simulated Trade Prices Over Time")
-    fig.update_layout(
-        yaxis_title="Price",
-        xaxis_title="Step",
-        legend_title="Legend",
-    )
-    fig.add_hline(y=fair_price, line_dash="dash", line_color="green", annotation_text="Fair price")
-    fig.add_hline(y=fair_price * (1 + threshold_pct), line_dash="dot", line_color="red", annotation_text="Threshold")
-    st.plotly_chart(fig, use_container_width=True)
-
-    # CSV download
-    csv_buffer = StringIO()
-    df.to_csv(csv_buffer, index=False)
-    st.download_button("Download events CSV", data=csv_buffer.getvalue().encode("utf-8"),
-                       file_name="simulation_events.csv")
-
-else:
-    st.info("Adjust parameters on the left and click **Run simulation**.")
+# CSV download
+csv_buffer = StringIO()
+df.to_csv(csv_buffer, index=False)
+st.download_button("Download events CSV", data=csv_buffer.getvalue().encode("utf-8"),
+                   file_name="simulation_events.csv")
 
 st.caption("Educational only — do not use for real market manipulation.")
