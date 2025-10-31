@@ -125,14 +125,20 @@ if run_button:
     st.subheader("Simulation timeline")
     st.dataframe(df)
 
-    trade_rows = df[df["price"].notnull()]
-    if not trade_rows.empty:
-        fig = px.line(trade_rows, x="step", y="price",
-                      title="Simulated Trade Prices Over Time")
-        fig.add_hline(y=fair_price, line_dash="dash", annotation_text="Fair price")
-        fig.add_hline(y=fair_price * (1 + threshold_pct), line_dash="dot", annotation_text="Threshold")
-        st.plotly_chart(fig)
+    # Always show a graph, even if some prices are missing
+    df_plot = df.copy()
+    df_plot["price_filled"] = df_plot["price"].fillna(method='ffill')
+    fig = px.line(df_plot, x="step", y="price_filled", title="Simulated Trade Prices Over Time")
+    fig.update_layout(
+        yaxis_title="Price",
+        xaxis_title="Step",
+        legend_title="Legend",
+    )
+    fig.add_hline(y=fair_price, line_dash="dash", line_color="green", annotation_text="Fair price")
+    fig.add_hline(y=fair_price * (1 + threshold_pct), line_dash="dot", line_color="red", annotation_text="Threshold")
+    st.plotly_chart(fig, use_container_width=True)
 
+    # CSV download
     csv_buffer = StringIO()
     df.to_csv(csv_buffer, index=False)
     st.download_button("Download events CSV", data=csv_buffer.getvalue().encode("utf-8"),
